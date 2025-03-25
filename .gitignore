@@ -93,3 +93,4 @@ target/
 
 
 stream_venv/*
+*.env
