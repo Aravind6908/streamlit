@@ -5,9 +5,19 @@ import PyPDF2
 import time  # Used to simulate typing effect
 import nltk
 
+import re
 import os
 import requests
 from dotenv import load_dotenv
+
+
+import torch
+from sentence_transformers import SentenceTransformer, util
+from transformers import pipeline
+import nltk
+
+nltk.download('punkt')
+
 
 from summa.summarizer import summarize
 from sumy.parsers.plaintext import PlaintextParser
@@ -23,7 +33,7 @@ nltk.download('punkt_tab')
 
 st.set_page_config(page_title="Legal Document Summarizer", layout="wide")
 
-st.title("📄 Legal Document Summarizer (Clean and Extractive summary)")
+st.title("📄 Legal Document Summarizer (Hybrid summary)")
 
 USER_AVATAR = "👤"
 BOT_AVATAR = "🤖"
@@ -45,18 +55,23 @@ def limit_text(text, word_limit=500):
 
 
 
-
-
 # CLEAN AND NORMALIZE TEXT
 
 # NEW: Text Preprocessing and Sectioning
-import re
 
-# Clean and normalize text
+# # Clean and normalize text
+# def clean_text(text):
+#     # Remove extra spaces, line breaks, tabs
+#     text = re.sub(r'\s+', ' ', text)
+#     text = text.strip()
+#     return text
+
+# Clean and normalize text (for legal documents)
 def clean_text(text):
-    # Remove extra spaces, line breaks, tabs
-    text = re.sub(r'\s+', ' ', text)
-    text = text.strip()
+    text = text.replace('\r\n', ' ').replace('\n', ' ')  # Replace newlines
+    text = re.sub(r'\s+', ' ', text)                    # Replace multiple spaces/tabs
+    text = re.sub(r'Page\s+\d+\s+of\s+\d+', '', text, flags=re.IGNORECASE)
+    text = text.strip()                                 # Trim leading/trailing whitespace
     return text
 
 # Classification of Document by Sections
@@ -162,60 +177,120 @@ def extract_text(file):
 
 #######################################################################################################################
 
-
-
 # EXTRACTIVE AND ABSTRACTIVE SUMMARIZATION
 
- # Extractive Summarization using LSA
-def lsa_summary(text, num_sentences=20):
-    parser = PlaintextParser.from_string(text, Tokenizer("english"))
-    summarizer = LsaSummarizer()
-    summary = summarizer(parser.document, num_sentences)
-    return " ".join(str(sentence) for sentence in summary)
+# def hf_summary_api(text, model_id, min_length=50, max_length=250):
+#     headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
+#     payload = {
+#         "inputs": text,
+#         "parameters": {
+#             "min_length": min_length,
+#             "max_length": max_length,
+#             "do_sample": False
+#         }
+#     }
+#     response = requests.post(
+#         f"https://api-inference.huggingface.co/models/{model_id}",
+#         headers=headers,
+#         json=payload
+#     )
+#     if response.status_code == 200:
+#         return response.json()[0]["summary_text"]
+#     else:
+#         return f"❌ API Error: {response.status_code} - {response.text}"
 
-# Extractive Summarization using LexRank
-def lexrank_summary(text, ratio=0.2):
-    """
-    Perform LexRank-based extractive summarization.
 
-    :param text: Full input text.
-    :param ratio: Fraction of sentences to keep (e.g., 0.2 = 20%).
-    :return: Extractive summary.
-    """
-    try:
-        summary = summarize(text, ratio=ratio)
-        return summary.strip()
-    except ValueError:
-        return "⚠️ Text too short to summarize with LexRank."
+# def hybrid_summary_by_section(text):
+#     cleaned_text = clean_text(text)
+#     sections = section_by_zero_shot(cleaned_text)
 
-# Abstractive Summarization using Hugging Face Transformers
-def abstractive_summary(text):
-    summarization_pipeline = pipeline("summarization", model="facebook/bart-large-cnn")
-    summary = summarization_pipeline(text, max_length=200, min_length=50, do_sample=False)
+#     summary_parts = []
+#     for name, content in sections.items():
+#         if content.strip():
+#             # Extractive using long-form summarizer
+#             extractive = hf_summary_api(
+#                 content,
+#                 model_id="sshleifer/distilbart-cnn-12-6",
+#                 max_length=200
+#             )
+
+#             # Abstractive using BART
+#             abstractive = hf_summary_api(
+#                 extractive,
+#                 model_id="facebook/bart-large-cnn",
+#                 max_length=250
+#             )
+
+#             hybrid = f"📌 **Extractive Summary:**\n{extractive}\n\n🔍 **Abstractive Summary:**\n{abstractive}"
+#             summary_parts.append(f"### 📘 {name} Section:\n{clean_text(hybrid)}")
+
+#     # return "\n\n".join(summary_parts)
+#     return extractive
+    # return sections
+
+
+
+@st.cache_resource
+def load_legalbert():
+    return SentenceTransformer("nlpaueb/legal-bert-base-uncased")
+
+@st.cache_resource
+def load_bart():
+    device = 0 if torch.cuda.is_available() else -1
+    return pipeline("summarization", model="facebook/bart-large-cnn", device=device)
+
+legalbert_model = load_legalbert()
+abstractive_pipeline = load_bart()
+
+
+def legalbert_extractive_summary(text, top_ratio=0.2):
+    sentences = sent_tokenize(text)
+    top_k = max(3, int(len(sentences) * top_ratio))
+
+    if len(sentences) <= top_k:
+        return text
+
+    # Embeddings & scoring
+    sentence_embeddings = legalbert_model.encode(sentences, convert_to_tensor=True)
+    doc_embedding = torch.mean(sentence_embeddings, dim=0)
+    cosine_scores = util.pytorch_cos_sim(doc_embedding, sentence_embeddings)[0]
+    top_results = torch.topk(cosine_scores, k=top_k)
+
+    # Preserve original order
+    selected_sentences = [sentences[i] for i in sorted(top_results.indices.tolist())]
+    return " ".join(selected_sentences)
+
+
+
+def bart_abstractive_summary(text, max_length=250, min_length=60):
+    summary = abstractive_pipeline(text, max_length=max_length, min_length=min_length, do_sample=False)
     return summary[0]['summary_text']
 
-# # Hybrid Summarization: Extractive + Abstractive
-# def hybrid_summary(text):
-#     # extractive = extractive_summary(text, num_sentences=5)
-#     # extractive = lexrank_summary(text, ratio=0.2)
-#     extractive = lsa_summary(text, num_sentences=5)
-#     abstractive = abstractive_summary(extractive)
-#     return f"📌 **Extractive Summary:**\n{extractive}\n\n🔍 **Abstractive Summary:**\n{abstractive}"
 
-
-# Updated hybrid summary section-wise (LSA-based for now)
-def hybrid_summary_by_section(text):
+def hybrid_summary_by_section(text, top_ratio=0.2):
     cleaned_text = clean_text(text)
-    sections = section_by_zero_shot(cleaned_text)  # 👈 uses zero-shot classifier
+    sections = section_by_zero_shot(cleaned_text)  # Split into Facts, Arguments, Judgment, Other
 
     summary_parts = []
     for name, content in sections.items():
         if content.strip():
-            extractive = lsa_summary(content, num_sentences=4)
-            summary_parts.append(f"### 📘 {name} Section:\n{extractive}")
+            # Calculate dynamic number of sentences to extract based on section length
+            sentences = sent_tokenize(content)
+            top_k = max(3, int(len(sentences) * top_ratio))
+
+            # Extractive summary using Legal-BERT
+            extractive = legalbert_extractive_summary(content, 0.2)
+
+            # Abstractive summary using BART
+            abstractive = bart_abstractive_summary(extractive)
+
+            # Combine both
+            hybrid = f"\ud83d\udccc **Extractive Summary:**\n{extractive}\n\n\ud83d\udd0d **Abstractive Summary:**\n{abstractive}"
+            summary_parts.append(f"### \ud83d\udcd8 {name} Section:\n{clean_text(hybrid)}")
 
     # return "\n\n".join(summary_parts)
-    return sections
+    return extractive
+
 
 
 #######################################################################################################################
@@ -275,7 +350,7 @@ if uploaded_file:
 
         with st.chat_message("assistant", avatar=BOT_AVATAR):
             preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n{summary_text}"
-            display_with_typing_effect(preview_text, speed=0.000005)
+            display_with_typing_effect(clean_text(preview_text), speed=0.000005)
 
         st.session_state.messages.append({
             "role": "assistant",
@@ -298,7 +373,7 @@ if prompt:
 
     with st.chat_message("assistant", avatar=BOT_AVATAR):
         bot_response = f"📝 **Hybrid Summary of your text:**\n\n{summary_text}"
-        display_with_typing_effect(bot_response, speed=0.00009)
+        display_with_typing_effect(clean_text(bot_response), speed=0.000005)
 
     st.session_state.messages.append({
         "role": "assistant",
