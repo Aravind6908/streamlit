@@ -17,7 +17,7 @@ from transformers import pipeline
 import nltk
 
 nltk.download('punkt')
-
+import hashlib
 
 from summa.summarizer import summarize
 from sumy.parsers.plaintext import PlaintextParser
@@ -36,7 +36,7 @@ import torch
 
 st.set_page_config(page_title="Legal Document Summarizer", layout="wide")
 
-st.title("📄 Legal Document Summarizer (Hybrid summary)")
+st.title("📄 Legal Document Summarizer (Upload)")
 
 USER_AVATAR = "👤"
 BOT_AVATAR = "🤖"
@@ -294,16 +294,63 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
+
 # Standard chat input field
 prompt = st.chat_input("Type a message...")
 
-# Standard File Upload (Below Chat Input)
-uploaded_file = st.file_uploader("Upload a file (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
+# # Place file uploader AFTER the chat input to keep layout consistent
+# uploaded_file = st.file_uploader("📎 Upload a file (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
 
-# Handle file upload and generate hybrid summary
+# Place uploader before the chat so it's always visible
+with st.container():
+    st.subheader("📎 Upload a Legal Document")
+    uploaded_file = st.file_uploader("Upload a file (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
+    reprocess_btn = st.button("🔄 Reprocess Last Uploaded File")
+
+
+# Hashing logic
+def get_file_hash(file):
+    file.seek(0)
+    content = file.read()
+    file.seek(0)
+    return hashlib.md5(content).hexdigest()
+
+# # Handle file upload and generate hybrid summary
+# if uploaded_file:
+#     file_hash = get_file_hash(uploaded_file)
+
+#     # Check if this file is already uploaded
+#     if file_hash != st.session_state.get("last_uploaded_hash"):
+#         raw_text = extract_text(uploaded_file)
+#         summary_text = hybrid_summary_by_section(raw_text)
+
+#         st.session_state.messages.append({
+#             "role": "user",
+#             "content": f"📤 Uploaded **{uploaded_file.name}**"
+#         })
+
+#         with st.chat_message("assistant", avatar=BOT_AVATAR):
+#             preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n{summary_text}"
+#             display_with_typing_effect(clean_text(preview_text), speed=0.000001)
+
+#         st.session_state.messages.append({
+#             "role": "assistant",
+#             "content": preview_text
+#         })
+
+#         st.session_state.last_uploaded_hash = file_hash
+#         save_chat_history(st.session_state.messages)
+
+#         # Force rerun to reset uploader state & redraw layout properly
+#         st.rerun()
+
+
+
 if uploaded_file:
-    if uploaded_file.name != st.session_state.last_uploaded:
-        # file_text = extract_text(uploaded_file)
+    file_hash = get_file_hash(uploaded_file)
+    
+    # Check if file is new OR reprocess is triggered
+    if file_hash != st.session_state.get("last_uploaded_hash") or reprocess_btn:
         raw_text = extract_text(uploaded_file)
         summary_text = hybrid_summary_by_section(raw_text)
 
@@ -314,16 +361,20 @@ if uploaded_file:
 
         with st.chat_message("assistant", avatar=BOT_AVATAR):
             preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n{summary_text}"
-            display_with_typing_effect(clean_text(preview_text), speed=0.0000001)
+            display_with_typing_effect(clean_text(preview_text), speed=0.000001)
 
         st.session_state.messages.append({
             "role": "assistant",
             "content": preview_text
         })
 
-        st.session_state.last_uploaded = uploaded_file.name
+        # Save this file hash only if it’s a new upload (avoid overwriting during reprocess)
+        if not reprocess_btn:
+            st.session_state.last_uploaded_hash = file_hash
+
         save_chat_history(st.session_state.messages)
         st.rerun()
+
 
 # Handle chat input and return hybrid summary
 if prompt:
