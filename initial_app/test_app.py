@@ -81,7 +81,7 @@ def display_with_typing_effect(text):
     for char in text:
         displayed_text += char
         placeholder.markdown(displayed_text)
-        time.sleep(0.00005)  # Simulate slow typing effect like ChatGPT
+        time.sleep(0.0000005)  # Simulate slow typing effect like ChatGPT
     return displayed_text
 
     

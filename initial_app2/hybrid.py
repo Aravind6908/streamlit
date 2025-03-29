@@ -59,7 +59,6 @@ def extract_text(file):
 #     return " ".join(str(sentence) for sentence in summary)
 
 
-
  # Extractive Summarization using LSA
 def lsa_summary(text, num_sentences=20):
     parser = PlaintextParser.from_string(text, Tokenizer("english"))
