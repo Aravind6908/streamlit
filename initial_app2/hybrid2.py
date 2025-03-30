@@ -17,7 +17,7 @@ from transformers import pipeline
 import nltk
 
 nltk.download('punkt')
-
+import hashlib
 
 from summa.summarizer import summarize
 from sumy.parsers.plaintext import PlaintextParser
@@ -36,7 +36,7 @@ import torch
 
 st.set_page_config(page_title="Legal Document Summarizer", layout="wide")
 
-st.title("📄 Legal Document Summarizer (Hybrid summary)")
+st.title("📄 Legal Document Summarizer (Upload)")
 
 USER_AVATAR = "👤"
 BOT_AVATAR = "🤖"
@@ -181,14 +181,20 @@ def load_legalbert():
 
 legalbert_model = load_legalbert()
 
+# @st.cache_resource
+# def load_led():
+#     tokenizer = LEDTokenizer.from_pretrained("allenai/led-base-16384")
+#     model = LEDForConditionalGeneration.from_pretrained("allenai/led-base-16384")
+#     return tokenizer, model
+
+# tokenizer_led, model_led = load_led()
+
 @st.cache_resource
-def load_led():
-    tokenizer = LEDTokenizer.from_pretrained("allenai/led-base-16384")
-    model = LEDForConditionalGeneration.from_pretrained("allenai/led-base-16384")
-    return tokenizer, model
+def load_fast_bart():
+    device = 0 if torch.cuda.is_available() else -1
+    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=device)
 
-tokenizer_led, model_led = load_led()
-
+bart_summarizer = load_fast_bart()
 
 def legalbert_extractive_summary(text, top_ratio=0.2):
     sentences = sent_tokenize(text)
@@ -212,24 +218,40 @@ def legalbert_extractive_summary(text, top_ratio=0.2):
     # Add LED Abstractive Summarization
 
 
-def led_abstractive_summary(text, max_length=512, min_length=100):
-    inputs = tokenizer_led(
-        text, return_tensors="pt", padding="max_length",
-        truncation=True, max_length=4096
-    )
-    global_attention_mask = torch.zeros_like(inputs["input_ids"])
-    global_attention_mask[:, 0] = 1  # Global attention on first token
+# def led_abstractive_summary(text, max_length=512, min_length=100):
+#     inputs = tokenizer_led(
+#         text, return_tensors="pt", padding="max_length",
+#         truncation=True, max_length=4096
+#     )
+#     global_attention_mask = torch.zeros_like(inputs["input_ids"])
+#     global_attention_mask[:, 0] = 1  # Global attention on first token
 
-    outputs = model_led.generate(
-        inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        global_attention_mask=global_attention_mask,
-        max_length=max_length,
-        min_length=min_length,
-        length_penalty=2.0,
-        num_beams=4
-    )
-    return tokenizer_led.decode(outputs[0], skip_special_tokens=True)
+#     outputs = model_led.generate(
+#         inputs["input_ids"],
+#         attention_mask=inputs["attention_mask"],
+#         global_attention_mask=global_attention_mask,
+#         max_length=max_length,
+#         min_length=min_length,
+#         length_penalty=2.0,
+#         num_beams=4
+#     )
+#     return tokenizer_led.decode(outputs[0], skip_special_tokens=True)
+
+
+
+def bart_abstractive_summary_chunked(text, max_chunk_words=700, max_length=256, min_length=60):
+    words = text.split()
+    summaries = []
+
+    for i in range(0, len(words), max_chunk_words):
+        chunk = " ".join(words[i:i+max_chunk_words])
+        summary = bart_summarizer(
+            chunk, max_length=max_length, min_length=min_length, do_sample=False
+        )[0]['summary_text']
+        summaries.append(summary)
+
+    return " ".join(summaries)
+
 
 
 def hybrid_summary_by_section(text, top_ratio=0.8):
@@ -247,7 +269,7 @@ def hybrid_summary_by_section(text, top_ratio=0.8):
             extractive = legalbert_extractive_summary(content, 0.8)
 
             # Abstractive summary using LED (handles long input)
-            abstractive = led_abstractive_summary(extractive)
+            abstractive = bart_abstractive_summary_chunked(extractive)
 
             # Combine both
             hybrid = f"📌 **Extractive Summary:**\n{extractive}\n\n🔍 **Abstractive Summary:**\n{abstractive}"
@@ -294,16 +316,34 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
+
 # Standard chat input field
 prompt = st.chat_input("Type a message...")
 
-# Standard File Upload (Below Chat Input)
-uploaded_file = st.file_uploader("Upload a file (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
+# # Place file uploader AFTER the chat input to keep layout consistent
+# uploaded_file = st.file_uploader("📎 Upload a file (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
 
-# Handle file upload and generate hybrid summary
+# Place uploader before the chat so it's always visible
+with st.container():
+    st.subheader("📎 Upload a Legal Document")
+    uploaded_file = st.file_uploader("Upload a file (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
+    reprocess_btn = st.button("🔄 Reprocess Last Uploaded File")
+
+
+# Hashing logic
+def get_file_hash(file):
+    file.seek(0)
+    content = file.read()
+    file.seek(0)
+    return hashlib.md5(content).hexdigest()
+
+
+
 if uploaded_file:
-    if uploaded_file.name != st.session_state.last_uploaded:
-        # file_text = extract_text(uploaded_file)
+    file_hash = get_file_hash(uploaded_file)
+    
+    # Check if file is new OR reprocess is triggered
+    if file_hash != st.session_state.get("last_uploaded_hash") or reprocess_btn:
         raw_text = extract_text(uploaded_file)
         summary_text = hybrid_summary_by_section(raw_text)
 
@@ -314,16 +354,20 @@ if uploaded_file:
 
         with st.chat_message("assistant", avatar=BOT_AVATAR):
             preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n{summary_text}"
-            display_with_typing_effect(clean_text(preview_text), speed=0.0000001)
+            display_with_typing_effect(clean_text(preview_text), speed=0)
 
         st.session_state.messages.append({
             "role": "assistant",
             "content": preview_text
         })
 
-        st.session_state.last_uploaded = uploaded_file.name
+        # Save this file hash only if it’s a new upload (avoid overwriting during reprocess)
+        if not reprocess_btn:
+            st.session_state.last_uploaded_hash = file_hash
+
         save_chat_history(st.session_state.messages)
         st.rerun()
+
 
 # Handle chat input and return hybrid summary
 if prompt:
@@ -337,7 +381,7 @@ if prompt:
 
     with st.chat_message("assistant", avatar=BOT_AVATAR):
         bot_response = f"📝 **Hybrid Summary of your text:**\n\n{summary_text}"
-        display_with_typing_effect(clean_text(bot_response), speed=0.000005)
+        display_with_typing_effect(clean_text(bot_response), speed=0)
 
     st.session_state.messages.append({
         "role": "assistant",
