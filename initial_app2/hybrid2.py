@@ -19,19 +19,12 @@ import nltk
 nltk.download('punkt')
 import hashlib
 
-from summa.summarizer import summarize
-from sumy.parsers.plaintext import PlaintextParser
-from sumy.nlp.tokenizers import Tokenizer
-from sumy.summarizers.text_rank import TextRankSummarizer
-from sumy.summarizers.lsa import LsaSummarizer
 from transformers import pipeline
 from transformers import pipeline
 from nltk import sent_tokenize
 nltk.download('punkt')
 
 nltk.download('punkt_tab')
-
-from transformers import LEDTokenizer, LEDForConditionalGeneration
 import torch
 
 st.set_page_config(page_title="Legal Document Summarizer", layout="wide")
