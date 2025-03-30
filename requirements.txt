@@ -1,10 +1,11 @@
 streamlit
+docx2txt
+PyPDF2
 python-dotenv
 openai
+sentence-transformers
 transformers
 nltk
-pytorch
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-pip install transformers sentence-transformers nltk torch
-
-hashlib
+requests
+torch
+torchvision
