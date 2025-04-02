@@ -172,12 +172,6 @@ def load_led():
 
 tokenizer_led, model_led = load_led()
 
-# @st.cache_resource
-# def load_fast_bart():
-#     device = 0 if torch.cuda.is_available() else -1
-#     return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=device)
-
-# bart_summarizer = load_fast_bart()
 
 def legalbert_extractive_summary(text, top_ratio=0.2):
     sentences = sent_tokenize(text)
@@ -207,17 +201,20 @@ def led_abstractive_summary(text, max_length=512, min_length=100):
         truncation=True, max_length=4096
     )
     global_attention_mask = torch.zeros_like(inputs["input_ids"])
-    global_attention_mask[:, 0] = 1  # Global attention on first token
+    global_attention_mask[:, 0] = 1
 
     outputs = model_led.generate(
-    inputs["input_ids"],
-    attention_mask=inputs["attention_mask"],
-    global_attention_mask=global_attention_mask,
-    max_length=max_length,
-    min_length=min_length,
-    num_beams=1,
-    early_stopping=True
-)
+        inputs["input_ids"],
+        attention_mask=inputs["attention_mask"],
+        global_attention_mask=global_attention_mask,
+        max_length=max_length,
+        min_length=min_length,
+        num_beams=4,                      # Use beam search
+        repetition_penalty=2.0,           # Penalize repetition
+        length_penalty=1.0,
+        early_stopping=True,
+        no_repeat_ngram_size=4            # Prevent repeated phrases
+    )
 
     return tokenizer_led.decode(outputs[0], skip_special_tokens=True)
 
@@ -338,15 +335,22 @@ if uploaded_file:
             "role": "user",
             "content": f"📤 Uploaded **{uploaded_file.name}**"
         })    
+      
 
-        # Combine all sections into a formatted preview
+        # Start building preview
         preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n"
 
-        for section, content in summary_dict.items():
-            preview_text += f"### 📘 {section} Section\n"
-            preview_text += f"📌 **Extractive Summary:**\n{content['extractive']}\n\n"
-            preview_text += f"🔍 **Abstractive Summary:**\n{content['abstractive']}\n\n"
+        # Force order: Facts → Arguments → Judgment → Other
+        for section in ["Facts", "Arguments", "Judgment", "Other"]:
+            if section in summary_dict:
+                extractive = summary_dict[section].get("extractive", "").strip()
+                abstractive = summary_dict[section].get("abstractive", "").strip()
 
+                preview_text += f"### 📘 {section} Section\n"
+                preview_text += f"📌 **Extractive Summary:**\n{extractive if extractive else '_No content extracted._'}\n\n"
+                preview_text += f"🔍 **Abstractive Summary:**\n{abstractive if abstractive else '_No summary generated._'}\n\n"
+
+        # Display in chat
         with st.chat_message("assistant", avatar=BOT_AVATAR):
             display_with_typing_effect(clean_text(preview_text), speed=0)
 
@@ -354,6 +358,7 @@ if uploaded_file:
             "role": "assistant",
             "content": clean_text(preview_text)
         })
+
 
         # Save this file hash only if it’s a new upload (avoid overwriting during reprocess)
         if not reprocess_btn:
@@ -374,14 +379,20 @@ if prompt:
         "content": prompt
     })
 
-    # Combine all sections into a formatted preview
+    # Start building preview
     preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n"
 
-    for section, content in summary_dict.items():
-        preview_text += f"### 📘 {section} Section\n"
-        preview_text += f"📌 **Extractive Summary:**\n{content['extractive']}\n\n"
-        preview_text += f"🔍 **Abstractive Summary:**\n{content['abstractive']}\n\n"
+    # Force order: Facts → Arguments → Judgment → Other
+    for section in ["Facts", "Arguments", "Judgment", "Other"]:
+        if section in summary_dict:
+            extractive = summary_dict[section].get("extractive", "").strip()
+            abstractive = summary_dict[section].get("abstractive", "").strip()
 
+            preview_text += f"### 📘 {section} Section\n"
+            preview_text += f"📌 **Extractive Summary:**\n{extractive if extractive else '_No content extracted._'}\n\n"
+            preview_text += f"🔍 **Abstractive Summary:**\n{abstractive if abstractive else '_No summary generated._'}\n\n"
+
+    # Display in chat
     with st.chat_message("assistant", avatar=BOT_AVATAR):
         display_with_typing_effect(clean_text(preview_text), speed=0)
 
@@ -389,6 +400,6 @@ if prompt:
         "role": "assistant",
         "content": clean_text(preview_text)
     })
-
+    
     save_chat_history(st.session_state.messages)
     st.rerun()
