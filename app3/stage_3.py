@@ -4,33 +4,22 @@ import docx2txt
 import PyPDF2
 import time  # Used to simulate typing effect
 import nltk
-
 import re
 import os
 import requests
 from dotenv import load_dotenv
-
-
 import torch
 from sentence_transformers import SentenceTransformer, util
-from transformers import pipeline
-import nltk
-
 nltk.download('punkt')
 import hashlib
-
-from transformers import pipeline
-from transformers import pipeline
 from nltk import sent_tokenize
-nltk.download('punkt')
-
 nltk.download('punkt_tab')
 from transformers import LEDTokenizer, LEDForConditionalGeneration
-import torch
+
 
 st.set_page_config(page_title="Legal Document Summarizer", layout="wide")
 
-st.title("📄 Legal Document Summarizer (Upload)")
+st.title("📄 Legal Document Summarizer (stage 3)")
 
 USER_AVATAR = "👤"
 BOT_AVATAR = "🤖"
@@ -183,12 +172,12 @@ def load_led():
 
 tokenizer_led, model_led = load_led()
 
-@st.cache_resource
-def load_fast_bart():
-    device = 0 if torch.cuda.is_available() else -1
-    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=device)
+# @st.cache_resource
+# def load_fast_bart():
+#     device = 0 if torch.cuda.is_available() else -1
+#     return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=device)
 
-bart_summarizer = load_fast_bart()
+# bart_summarizer = load_fast_bart()
 
 def legalbert_extractive_summary(text, top_ratio=0.2):
     sentences = sent_tokenize(text)
@@ -212,65 +201,70 @@ def legalbert_extractive_summary(text, top_ratio=0.2):
     # Add LED Abstractive Summarization
 
 
-# def led_abstractive_summary(text, max_length=512, min_length=100):
-#     inputs = tokenizer_led(
-#         text, return_tensors="pt", padding="max_length",
-#         truncation=True, max_length=4096
-#     )
-#     global_attention_mask = torch.zeros_like(inputs["input_ids"])
-#     global_attention_mask[:, 0] = 1  # Global attention on first token
+def led_abstractive_summary(text, max_length=512, min_length=100):
+    inputs = tokenizer_led(
+        text, return_tensors="pt", padding="max_length",
+        truncation=True, max_length=4096
+    )
+    global_attention_mask = torch.zeros_like(inputs["input_ids"])
+    global_attention_mask[:, 0] = 1  # Global attention on first token
 
-#     outputs = model_led.generate(
-#         inputs["input_ids"],
-#         attention_mask=inputs["attention_mask"],
-#         global_attention_mask=global_attention_mask,
-#         max_length=max_length,
-#         min_length=min_length,
-#         length_penalty=2.0,
-#         num_beams=4
-#     )
-#     return tokenizer_led.decode(outputs[0], skip_special_tokens=True)
+    outputs = model_led.generate(
+    inputs["input_ids"],
+    attention_mask=inputs["attention_mask"],
+    global_attention_mask=global_attention_mask,
+    max_length=max_length,
+    min_length=min_length,
+    num_beams=1,
+    early_stopping=True
+)
+
+    return tokenizer_led.decode(outputs[0], skip_special_tokens=True)
 
 
 
-def bart_abstractive_summary_chunked(text, max_chunk_words=700, max_length=256, min_length=60):
-    words = text.split()
+def led_abstractive_summary_chunked(text, max_tokens=3000):
+    sentences = sent_tokenize(text)
+    current_chunk = ""
+    chunks = []
+    for sent in sentences:
+        if len(tokenizer_led(current_chunk + sent)["input_ids"]) > max_tokens:
+            chunks.append(current_chunk)
+            current_chunk = sent
+        else:
+            current_chunk += " " + sent
+    if current_chunk:
+        chunks.append(current_chunk)
+
     summaries = []
-
-    for i in range(0, len(words), max_chunk_words):
-        chunk = " ".join(words[i:i+max_chunk_words])
-        summary = bart_summarizer(
-            chunk, max_length=max_length, min_length=min_length, do_sample=False
-        )[0]['summary_text']
-        summaries.append(summary)
+    for chunk in chunks:
+        summaries.append(led_abstractive_summary(chunk))  # Call your LED summary function here
 
     return " ".join(summaries)
 
 
 
-def hybrid_summary_by_section(text, top_ratio=0.8):
+def hybrid_summary_hierarchical(text, top_ratio=0.8):
     cleaned_text = clean_text(text)
-    sections = section_by_zero_shot(cleaned_text)  # Split into Facts, Arguments, Judgment, Other
+    sections = section_by_zero_shot(cleaned_text)
 
-    summary_parts = []
+    structured_summary = {}  # <-- hierarchical summary here
+
     for name, content in sections.items():
         if content.strip():
-            # Calculate dynamic number of sentences to extract based on section length
-            sentences = sent_tokenize(content)
-            top_k = max(3, int(len(sentences) * top_ratio))
+            # Extractive summary
+            extractive = legalbert_extractive_summary(content, top_ratio)
 
-            # Extractive summary using Legal-BERT
-            extractive = legalbert_extractive_summary(content, 0.8)
+            # Abstractive summary
+            abstractive = led_abstractive_summary_chunked(extractive)
 
-            # Abstractive summary using LED (handles long input)
-            abstractive = bart_abstractive_summary_chunked(extractive)
+            # Store in dictionary (hierarchical structure)
+            structured_summary[name] = {
+                "extractive": extractive,
+                "abstractive": abstractive
+            }
 
-            # Combine both
-            hybrid = f"📌 **Extractive Summary:**\n{extractive}\n\n🔍 **Abstractive Summary:**\n{abstractive}"
-            summary_parts.append(f"### 📘 {name} Section:\n{clean_text(hybrid)}")
-
-    return "\n\n".join(summary_parts)
-    # return abstractive
+    return structured_summary
 
 
 #######################################################################################################################
@@ -314,8 +308,6 @@ for message in st.session_state.messages:
 # Standard chat input field
 prompt = st.chat_input("Type a message...")
 
-# # Place file uploader AFTER the chat input to keep layout consistent
-# uploaded_file = st.file_uploader("📎 Upload a file (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
 
 # Place uploader before the chat so it's always visible
 with st.container():
@@ -339,20 +331,28 @@ if uploaded_file:
     # Check if file is new OR reprocess is triggered
     if file_hash != st.session_state.get("last_uploaded_hash") or reprocess_btn:
         raw_text = extract_text(uploaded_file)
-        summary_text = hybrid_summary_by_section(raw_text)
+        
+        summary_dict = hybrid_summary_hierarchical(raw_text)
 
         st.session_state.messages.append({
             "role": "user",
             "content": f"📤 Uploaded **{uploaded_file.name}**"
-        })
+        })    
+
+        # Combine all sections into a formatted preview
+        preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n"
+
+        for section, content in summary_dict.items():
+            preview_text += f"### 📘 {section} Section\n"
+            preview_text += f"📌 **Extractive Summary:**\n{content['extractive']}\n\n"
+            preview_text += f"🔍 **Abstractive Summary:**\n{content['abstractive']}\n\n"
 
         with st.chat_message("assistant", avatar=BOT_AVATAR):
-            preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n{summary_text}"
             display_with_typing_effect(clean_text(preview_text), speed=0)
 
         st.session_state.messages.append({
             "role": "assistant",
-            "content": preview_text
+            "content": clean_text(preview_text)
         })
 
         # Save this file hash only if it’s a new upload (avoid overwriting during reprocess)
@@ -366,20 +366,28 @@ if uploaded_file:
 # Handle chat input and return hybrid summary
 if prompt:
     raw_text = prompt
-    summary_text = hybrid_summary_by_section(raw_text)
+    
+    summary_dict = hybrid_summary_hierarchical(raw_text)
     
     st.session_state.messages.append({
         "role": "user",
         "content": prompt
     })
 
+    # Combine all sections into a formatted preview
+    preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n"
+
+    for section, content in summary_dict.items():
+        preview_text += f"### 📘 {section} Section\n"
+        preview_text += f"📌 **Extractive Summary:**\n{content['extractive']}\n\n"
+        preview_text += f"🔍 **Abstractive Summary:**\n{content['abstractive']}\n\n"
+
     with st.chat_message("assistant", avatar=BOT_AVATAR):
-        bot_response = f"📝 **Hybrid Summary of your text:**\n\n{summary_text}"
-        display_with_typing_effect(clean_text(bot_response), speed=0)
+        display_with_typing_effect(clean_text(preview_text), speed=0)
 
     st.session_state.messages.append({
         "role": "assistant",
-        "content": bot_response
+        "content": clean_text(preview_text)
     })
 
     save_chat_history(st.session_state.messages)
