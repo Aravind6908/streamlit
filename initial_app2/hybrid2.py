@@ -175,13 +175,13 @@ def load_legalbert():
 
 legalbert_model = load_legalbert()
 
-@st.cache_resource
-def load_led():
-    tokenizer = LEDTokenizer.from_pretrained("allenai/led-base-16384")
-    model = LEDForConditionalGeneration.from_pretrained("allenai/led-base-16384")
-    return tokenizer, model
+# @st.cache_resource
+# def load_led():
+#     tokenizer = LEDTokenizer.from_pretrained("allenai/led-base-16384")
+#     model = LEDForConditionalGeneration.from_pretrained("allenai/led-base-16384")
+#     return tokenizer, model
 
-tokenizer_led, model_led = load_led()
+# tokenizer_led, model_led = load_led()
 
 @st.cache_resource
 def load_fast_bart():

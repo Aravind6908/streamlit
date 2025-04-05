@@ -367,16 +367,6 @@ if uploaded_file:
         # Start building preview
         preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n"
 
-        # Force order: Facts → Arguments → Judgment → Other
-        # for section in ["Facts", "Arguments", "Judgment", "Other"]:
-        #     if section in summary_dict:
-        #         extractive = summary_dict[section].get("extractive", "").strip()
-        #         abstractive = summary_dict[section].get("abstractive", "").strip()
-
-        #         preview_text += f"### 📘 {section} Section\n"
-        #         preview_text += f"📌 **Extractive Summary:**\n{extractive if extractive else '_No content extracted._'}\n\n"
-        #         preview_text += f"🔍 **Abstractive Summary:**\n{abstractive if abstractive else '_No summary generated._'}\n\n"
-
         
         for section in ["Facts", "Arguments", "Judgment", "Other"]:
             if section in summary_dict:
@@ -425,16 +415,6 @@ if prompt:
 
     # Start building preview
     preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n"
-
-    # Force order: Facts → Arguments → Judgment → Other
-    # for section in ["Facts", "Arguments", "Judgment", "Other"]:
-    #     if section in summary_dict:
-    #         extractive = summary_dict[section].get("extractive", "").strip()
-    #         abstractive = summary_dict[section].get("abstractive", "").strip()
-
-    #         preview_text += f"### 📘 {section} Section\n"
-    #         preview_text += f"📌 **Extractive Summary:**\n{extractive if extractive else '_No content extracted._'}\n\n"
-    #         preview_text += f"🔍 **Abstractive Summary:**\n{abstractive if abstractive else '_No summary generated._'}\n\n"
 
 
     for section in ["Facts", "Arguments", "Judgment", "Other"]:
