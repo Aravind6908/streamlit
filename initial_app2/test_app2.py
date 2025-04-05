@@ -1,6 +1,5 @@
 # from openai import OpenAI
 import streamlit as st
-# from dotenv import load_dotenv
 import shelve
 import docx2txt
 import PyPDF2
@@ -18,9 +17,7 @@ USER_AVATAR = "👤"
 BOT_AVATAR = "🤖"
 # client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# # Ensure openai_model is initialized in session state
-# if "openai_model" not in st.session_state:
-#     st.session_state["openai_model"] = "gpt-3.5-turbo"
+# Ensure openai_model is initialized in session state
 
 
 # Load chat history from shelve file
