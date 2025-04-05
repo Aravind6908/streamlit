@@ -3,9 +3,10 @@ docx2txt
 PyPDF2
 python-dotenv
 openai
-sentence-transformers
-transformers
+sentence-transformers==2.2.2
+transformers==4.40.0
 nltk
 requests
 torch
 torchvision
+
