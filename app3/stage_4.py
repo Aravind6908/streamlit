@@ -14,6 +14,7 @@ nltk.download('punkt')
 import hashlib
 from nltk import sent_tokenize
 from transformers import LEDTokenizer, LEDForConditionalGeneration
+import logging
 
 
 st.set_page_config(page_title="Legal Document Summarizer", layout="wide")
@@ -72,6 +73,7 @@ def clean_text(text):
 load_dotenv()
 HF_API_TOKEN = os.getenv("HF_API_TOKEN")
 
+print("🔐 HF_API_TOKEN:", os.getenv("HF_API_TOKEN"))
 
 def classify_zero_shot_hfapi(text, labels):
     if not HF_API_TOKEN:
@@ -156,20 +158,42 @@ def extract_text(file):
 # EXTRACTIVE AND ABSTRACTIVE SUMMARIZATION
 
 
+# @st.cache_resource
+# def load_legalbert():
+#     return SentenceTransformer("nlpaueb/legal-bert-base-uncased")
+
 @st.cache_resource
 def load_legalbert():
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
     return SentenceTransformer("nlpaueb/legal-bert-base-uncased")
 
 
 legalbert_model = load_legalbert()
 
+# @st.cache_resource
+# def load_led():
+#     tokenizer = LEDTokenizer.from_pretrained("allenai/led-base-16384")
+#     model = LEDForConditionalGeneration.from_pretrained("allenai/led-base-16384")
+#     return tokenizer, model
+
 @st.cache_resource
 def load_led():
-    tokenizer = LEDTokenizer.from_pretrained("allenai/led-base-16384")
-    model = LEDForConditionalGeneration.from_pretrained("allenai/led-base-16384")
+    tokenizer = LEDTokenizer.from_pretrained(
+        "allenai/led-base-16384", 
+        token=os.getenv("HF_API_TOKEN")
+    )
+    model = LEDForConditionalGeneration.from_pretrained(
+        "allenai/led-base-16384", 
+        token=os.getenv("HF_API_TOKEN")
+    )
     return tokenizer, model
 
-tokenizer_led, model_led = load_led()
+try:
+    tokenizer_led, model_led = load_led()
+except Exception as e:
+    st.error(f"🚨 Error loading LED model: {e}")
+
+
 
 
 def legalbert_extractive_summary(text, top_ratio=0.2):
@@ -219,7 +243,7 @@ def led_abstractive_summary(text, max_length=512, min_length=100):
 
 
 
-def led_abstractive_summary_chunked(text, max_tokens=3000):
+def led_abstractive_summary_chunked(text, max_tokens=2560):
     sentences = sent_tokenize(text)
     current_chunk = ""
     chunks = []
