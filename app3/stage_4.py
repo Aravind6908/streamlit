@@ -70,8 +70,18 @@ def clean_text(text):
 # LOADING MODELS FOR DIVIDING TEXT INTO SECTIONS
 
 # Load token from .env file
-load_dotenv()
-HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+# load_dotenv()
+# HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+
+
+# Try Streamlit secrets first, fallback to .env for local
+# Use .env locally or Streamlit Cloud secrets if available
+try:
+    HF_API_TOKEN = st.secrets["HF_API_TOKEN"]
+except Exception:
+    load_dotenv()
+    HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+
 
 print("🔐 HF_API_TOKEN:", os.getenv("HF_API_TOKEN"))
 
@@ -157,11 +167,7 @@ def extract_text(file):
 
 # EXTRACTIVE AND ABSTRACTIVE SUMMARIZATION
 
-
-# @st.cache_resource
-# def load_legalbert():
-#     return SentenceTransformer("nlpaueb/legal-bert-base-uncased")
-
+# Load the LegalBERT model for extractive summarization
 @st.cache_resource
 def load_legalbert():
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
@@ -170,11 +176,6 @@ def load_legalbert():
 
 legalbert_model = load_legalbert()
 
-# @st.cache_resource
-# def load_led():
-#     tokenizer = LEDTokenizer.from_pretrained("allenai/led-base-16384")
-#     model = LEDForConditionalGeneration.from_pretrained("allenai/led-base-16384")
-#     return tokenizer, model
 
 @st.cache_resource
 def load_led():
