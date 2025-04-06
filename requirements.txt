@@ -9,6 +9,6 @@ nltk
 requests
 torch
 torchvision
-huggingface-hub>==0.20.3
+huggingface-hub==0.20.3
 
 
