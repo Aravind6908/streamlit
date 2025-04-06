@@ -7,7 +7,7 @@ sentence-transformers==2.2.2
 transformers==4.40.0
 nltk
 requests
-torch==2.1.2
+torch==2.2.2
 torchvision==0.16.2
 huggingface-hub==0.20.3
 
