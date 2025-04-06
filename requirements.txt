@@ -1,13 +1,25 @@
-streamlit==1.28.2
+# streamlit==1.28.2
+# docx2txt
+# PyPDF2
+# python-dotenv
+# openai
+# sentence-transformers==2.2.2
+# transformers==4.36.2
+# nltk
+# requests
+# torch==2..0
+# torchvision==0.17.2
+# huggingface-hub==0.20.3
+
+streamlit
 docx2txt
 PyPDF2
 python-dotenv
 openai
-sentence-transformers==2.2.2
+sentence-transformers
 transformers==4.36.2
 nltk
 requests
 torch==2.1.0
-huggingface-hub==0.20.3
-
+torchvision
 

@@ -13,8 +13,8 @@ from sentence_transformers import SentenceTransformer, util
 nltk.download('punkt')
 import hashlib
 from nltk import sent_tokenize
+nltk.download('punkt_tab')
 from transformers import LEDTokenizer, LEDForConditionalGeneration
-import logging
 
 
 st.set_page_config(page_title="Legal Document Summarizer", layout="wide")
@@ -70,20 +70,9 @@ def clean_text(text):
 # LOADING MODELS FOR DIVIDING TEXT INTO SECTIONS
 
 # Load token from .env file
-# load_dotenv()
-# HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+load_dotenv()
+HF_API_TOKEN = os.getenv("HF_API_TOKEN")
 
-
-# Try Streamlit secrets first, fallback to .env for local
-# Use .env locally or Streamlit Cloud secrets if available
-try:
-    HF_API_TOKEN = st.secrets["HF_API_TOKEN"]["value"]
-except Exception:
-    load_dotenv()
-    HF_API_TOKEN = os.getenv("HF_API_TOKEN")
-
-
-print("🔐 HF_API_TOKEN:", os.getenv("HF_API_TOKEN"))
 
 def classify_zero_shot_hfapi(text, labels):
     if not HF_API_TOKEN:
@@ -167,34 +156,21 @@ def extract_text(file):
 
 # EXTRACTIVE AND ABSTRACTIVE SUMMARIZATION
 
-# Load the LegalBERT model for extractive summarization
+
 @st.cache_resource
 def load_legalbert():
-    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
     return SentenceTransformer("nlpaueb/legal-bert-base-uncased")
 
 
 legalbert_model = load_legalbert()
 
-
 @st.cache_resource
 def load_led():
-    tokenizer = LEDTokenizer.from_pretrained(
-        "allenai/led-base-16384", 
-        token=os.getenv("HF_API_TOKEN")
-    )
-    model = LEDForConditionalGeneration.from_pretrained(
-        "allenai/led-base-16384", 
-        token=os.getenv("HF_API_TOKEN")
-    )
+    tokenizer = LEDTokenizer.from_pretrained("allenai/led-base-16384")
+    model = LEDForConditionalGeneration.from_pretrained("allenai/led-base-16384")
     return tokenizer, model
 
-try:
-    tokenizer_led, model_led = load_led()
-except Exception as e:
-    st.error(f"🚨 Error loading LED model: {e}")
-
-
+tokenizer_led, model_led = load_led()
 
 
 def legalbert_extractive_summary(text, top_ratio=0.2):
@@ -391,6 +367,16 @@ if uploaded_file:
         # Start building preview
         preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n"
 
+        # Force order: Facts → Arguments → Judgment → Other
+        # for section in ["Facts", "Arguments", "Judgment", "Other"]:
+        #     if section in summary_dict:
+        #         extractive = summary_dict[section].get("extractive", "").strip()
+        #         abstractive = summary_dict[section].get("abstractive", "").strip()
+
+        #         preview_text += f"### 📘 {section} Section\n"
+        #         preview_text += f"📌 **Extractive Summary:**\n{extractive if extractive else '_No content extracted._'}\n\n"
+        #         preview_text += f"🔍 **Abstractive Summary:**\n{abstractive if abstractive else '_No summary generated._'}\n\n"
+
         
         for section in ["Facts", "Arguments", "Judgment", "Other"]:
             if section in summary_dict:
@@ -440,6 +426,16 @@ if prompt:
     # Start building preview
     preview_text = f"🧾 **Hybrid Summary of {uploaded_file.name}:**\n\n"
 
+    # Force order: Facts → Arguments → Judgment → Other
+    # for section in ["Facts", "Arguments", "Judgment", "Other"]:
+    #     if section in summary_dict:
+    #         extractive = summary_dict[section].get("extractive", "").strip()
+    #         abstractive = summary_dict[section].get("abstractive", "").strip()
+
+    #         preview_text += f"### 📘 {section} Section\n"
+    #         preview_text += f"📌 **Extractive Summary:**\n{extractive if extractive else '_No content extracted._'}\n\n"
+    #         preview_text += f"🔍 **Abstractive Summary:**\n{abstractive if abstractive else '_No summary generated._'}\n\n"
+
 
     for section in ["Facts", "Arguments", "Judgment", "Other"]:
         if section in summary_dict:
@@ -468,4 +464,3 @@ if prompt:
     
     save_chat_history(st.session_state.messages)
     st.rerun()
-
