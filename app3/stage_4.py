@@ -13,7 +13,6 @@ from sentence_transformers import SentenceTransformer, util
 nltk.download('punkt')
 import hashlib
 from nltk import sent_tokenize
-nltk.download('punkt_tab')
 from transformers import LEDTokenizer, LEDForConditionalGeneration
 
 
