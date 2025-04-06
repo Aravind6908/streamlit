@@ -8,7 +8,7 @@ transformers==4.40.0
 nltk
 requests
 torch==2.2.2
-torchvision==0.16.2
+torchvision==0.21.0
 huggingface-hub==0.20.3
 
 
